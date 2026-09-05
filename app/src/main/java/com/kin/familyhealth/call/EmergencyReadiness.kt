@@ -159,12 +159,20 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
     var camMic by remember { mutableStateOf(EmergencyReadiness.cameraMicGranted(context)) }
     var notifs by remember { mutableStateOf(EmergencyReadiness.notificationsEnabled(context)) }
     // Once the system dialog has been shown and still denied, Android stops prompting
-    // ("don't ask again"); the button must then route to app settings, not go inert.
-    var askedOnce by remember { mutableStateOf(false) }
+    // ("don't ask again"); the button must then route to settings, not go inert. One
+    // flag PER request, so refusing camera/mic doesn't skip the notifications prompt.
+    var camMicAsked by remember { mutableStateOf(false) }
+    var notifAsked by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) {
-        askedOnce = true
+    ) { result ->
+        // Mark only the request that actually came back.
+        if (Manifest.permission.CAMERA in result || Manifest.permission.RECORD_AUDIO in result) {
+            camMicAsked = true
+        }
+        if (Manifest.permission.POST_NOTIFICATIONS in result) {
+            notifAsked = true
+        }
         camMic = EmergencyReadiness.cameraMicGranted(context)
         notifs = EmergencyReadiness.notificationsEnabled(context)
     }
@@ -205,7 +213,7 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
             if (!camMic) {
                 Button(
                     onClick = {
-                        if (askedOnce) {
+                        if (camMicAsked) {
                             EmergencyReadiness.openAppSettings(context)
                         } else {
                             permissionLauncher.launch(
@@ -216,7 +224,7 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        if (askedOnce) "Open app settings to allow camera & mic"
+                        if (camMicAsked) "Open app settings to allow camera & mic"
                         else "Grant camera & microphone"
                     )
                 }
@@ -227,7 +235,7 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                     onClick = {
                         val appLevelOff =
                             !NotificationManagerCompat.from(context).areNotificationsEnabled()
-                        if (Build.VERSION.SDK_INT >= 33 && appLevelOff && !askedOnce) {
+                        if (Build.VERSION.SDK_INT >= 33 && appLevelOff && !notifAsked) {
                             permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                         } else {
                             // Channel silenced, pre-13, or already refused: go to settings.
