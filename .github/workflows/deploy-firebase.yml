@@ -26,8 +26,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
       - name: Write service account
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -38,9 +36,11 @@ jobs:
           fi
           printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
-      - name: Deploy rules
-        working-directory: server
-        run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT" --non-interactive
+      - name: Publish rules via Admin SDK
+        working-directory: server/functions
+        run: |
+          npm install --no-audit --no-fund
+          node deploy-rules.js ../../firestore.rules
 
   functions:
     name: Deploy emergency-push relay function
@@ -58,7 +58,7 @@ jobs:
       - name: Install Firebase CLI + function deps
         run: |
           npm install -g firebase-tools
-          cd server/functions && npm install
+          cd server/functions && npm install --no-audit --no-fund
       - name: Write service account
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -69,6 +69,6 @@ jobs:
         working-directory: server
         run: |
           if ! firebase deploy --only functions --project "$FIREBASE_PROJECT" --non-interactive --force; then
-            echo "::warning::Function deploy failed. Most common cause: the Firebase project is not on the Blaze plan (Cloud Functions require it; free at this usage). Rules deployed fine; only the emergency wake-push relay is affected."
+            echo "::warning::Function deploy failed. Most common causes: project not on the Blaze plan (Cloud Functions require it; free at this usage), or the service account lacks project-level roles. Rules deployed fine; only the emergency wake-push relay is affected."
             exit 1
           fi
