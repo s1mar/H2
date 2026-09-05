@@ -15,5 +15,6 @@ local.properties
 *.iml
 .DS_Store
 
-# app/google-services.json is committed intentionally as a placeholder so the
-# google-services Gradle plugin can parse it; replace with the real file before shipping.
+# google-services.json holds a Firebase API key — NEVER commit it to a public repo.
+# Keep your downloaded copy at app/google-services.json locally (untracked).
+app/google-services.json
