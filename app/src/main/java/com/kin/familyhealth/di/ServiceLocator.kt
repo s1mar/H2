@@ -65,13 +65,14 @@ object ServiceLocator {
     fun signalingClient(context: Context): SignalingClient = signaling ?: synchronized(this) {
         signaling ?: run {
             val app = context.applicationContext
-            val impl: SignalingClient = if (firebaseReady(app)) {
-                FirebaseSignalingClient(Firebase.firestore, ::myUid)
+            if (firebaseReady(app)) {
+                FirebaseSignalingClient(Firebase.firestore, ::myUid).also { signaling = it }
             } else {
+                // Deliberately NOT cached: if Firebase wasn't ready at this instant, the next
+                // call re-checks and can self-heal to the real client instead of being stuck
+                // on a silent no-op forever.
                 NoopSignalingClient
             }
-            signaling = impl
-            impl
         }
     }
 
@@ -104,9 +105,15 @@ object ServiceLocator {
         }
     }
 
-    /** Stable room id shared by both peers regardless of who initiates. */
+    /**
+     * Per-call room id. Both uids come first (sorted, so the Firestore rule
+     * `request.auth.uid in room.split('_')` still passes), followed by a timestamp so
+     * EVERY call gets a fresh signaling room. A fixed room would replay the previous
+     * call's offer/answer/ICE and its HANGUP into the next call, killing it instantly.
+     * The callee never derives this; it receives the room in the wake-push payload.
+     */
     fun roomFor(a: String?, b: String): String =
-        listOfNotNull(a, b).sorted().joinToString("_").ifEmpty { b }
+        (listOfNotNull(a, b).sorted() + System.currentTimeMillis().toString()).joinToString("_")
 }
 
 /** Offline fallback: keeps the dashboard alive with no partner data. */

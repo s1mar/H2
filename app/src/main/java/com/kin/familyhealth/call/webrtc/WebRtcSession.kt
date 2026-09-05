@@ -80,6 +80,12 @@ class WebRtcSession(
     private var factory: PeerConnectionFactory? = null
     private var peerConnection: PeerConnection? = null
 
+    // ICE candidates can arrive from Firestore before setRemoteDescription completes
+    // (it's async). Queue them and flush once the remote description is in place,
+    // otherwise libwebrtc may silently drop them and the call never connects.
+    @Volatile private var remoteDescriptionSet = false
+    private val pendingIce = mutableListOf<IceCandidate>()
+
     private var videoCapturer: CameraVideoCapturer? = null
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var videoSource: VideoSource? = null
@@ -254,26 +260,41 @@ class WebRtcSession(
 
     private fun onRemoteOffer(sdp: String) {
         val pc = peerConnection ?: return
-        pc.setRemoteDescription(SdpObserverAdapter(), SessionDescription(SessionDescription.Type.OFFER, sdp))
-        pc.createAnswer(object : SdpObserverAdapter() {
-            override fun onCreateSuccess(desc: SessionDescription?) {
-                if (desc == null) return
-                pc.setLocalDescription(SdpObserverAdapter(), desc)
-                scope.launch {
-                    signaling.send(
-                        peerUid,
-                        SignalMessage(type = SignalType.ANSWER, fromUid = "", room = room, sdp = desc.description)
-                    )
-                }
+        // Correct WebRTC order: apply the remote OFFER first, and only once that has
+        // succeeded create the ANSWER and flush any early ICE candidates.
+        pc.setRemoteDescription(object : SdpObserverAdapter() {
+            override fun onSetSuccess() {
+                onRemoteDescriptionSet()
+                pc.createAnswer(object : SdpObserverAdapter() {
+                    override fun onCreateSuccess(desc: SessionDescription?) {
+                        if (desc == null) return
+                        pc.setLocalDescription(SdpObserverAdapter(), desc)
+                        scope.launch {
+                            signaling.send(
+                                peerUid,
+                                SignalMessage(type = SignalType.ANSWER, fromUid = "", room = room, sdp = desc.description)
+                            )
+                        }
+                    }
+                }, MediaConstraints())
             }
-        }, MediaConstraints())
+        }, SessionDescription(SessionDescription.Type.OFFER, sdp))
     }
 
     private fun onRemoteAnswer(sdp: String) {
         peerConnection?.setRemoteDescription(
-            SdpObserverAdapter(),
+            object : SdpObserverAdapter() {
+                override fun onSetSuccess() { onRemoteDescriptionSet() }
+            },
             SessionDescription(SessionDescription.Type.ANSWER, sdp)
         )
+    }
+
+    /** Marks the remote description as applied and flushes queued ICE candidates. */
+    private fun onRemoteDescriptionSet() {
+        remoteDescriptionSet = true
+        val queued = synchronized(pendingIce) { pendingIce.toList().also { pendingIce.clear() } }
+        queued.forEach { peerConnection?.addIceCandidate(it) }
     }
 
     private fun onRemoteIceCandidate(candidateJson: String) {
@@ -284,8 +305,13 @@ class WebRtcSession(
                 json.optInt("sdpMLineIndex"),
                 json.optString("candidate")
             )
-        }.onSuccess { peerConnection?.addIceCandidate(it) }
-            .onFailure { Log.w(TAG, "bad ICE candidate payload", it) }
+        }.onSuccess { candidate ->
+            if (remoteDescriptionSet) {
+                peerConnection?.addIceCandidate(candidate)
+            } else {
+                synchronized(pendingIce) { pendingIce.add(candidate) }
+            }
+        }.onFailure { Log.w(TAG, "bad ICE candidate payload", it) }
     }
 
     private fun encodeIceCandidate(candidate: IceCandidate): String =

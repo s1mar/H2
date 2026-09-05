@@ -11,6 +11,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.kin.familyhealth.core.CallLauncher
+import com.kin.familyhealth.di.ServiceLocator
 import com.kin.familyhealth.core.Constants
 
 private const val TAG = "CallForegroundService"
@@ -62,15 +63,28 @@ class CallForegroundService : Service() {
 
         acquireWakeLock()
 
+        // Self-heal: on a cold start triggered by the wake-push, the signaling client may
+        // not have been installed yet. Resolve it now rather than failing into a dead
+        // "Connecting..." screen with no video and no recovery.
+        if (CallSessionHolder.signalingClient == null) {
+            CallSessionHolder.signalingClient = ServiceLocator.signalingClient(applicationContext)
+        }
+
         // Step 4: stand up the WebRTC session (this is what opens the camera).
         val session = runCatching {
             CallSessionHolder.ensureSession(applicationContext, room, callerId, isIncoming)
         }.onFailure { Log.e(TAG, "Failed to create WebRtcSession", it) }.getOrNull()
 
-        session?.let {
-            it.initialize()
-            if (isIncoming) it.startAsCallee() else it.startAsCaller()
+        if (session == null) {
+            // Never launch the call screen without a session: it would sit on
+            // "Connecting..." forever. Tear down cleanly instead.
+            Log.e(TAG, "No WebRTC session; aborting call.")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
         }
+        session.initialize()
+        if (isIncoming) session.startAsCallee() else session.startAsCaller()
 
         // Step 5: full-screen intent launches CallActivity directly (self-answer path).
         launchCallActivity(callerId, room, isIncoming)
@@ -87,7 +101,9 @@ class CallForegroundService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
             setReferenceCounted(false)
-            acquire(2 * 60 * 1000L /* 2 min safety timeout */)
+            // Long enough to survive a slow ICE/TURN negotiation on mobile data; the
+            // call screen's own keep-screen-on flag is the primary mechanism once visible.
+            acquire(10 * 60 * 1000L /* 10 min safety timeout */)
         }
     }
 

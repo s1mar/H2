@@ -1,5 +1,6 @@
 package com.kin.familyhealth.dashboard
 
+import com.kin.familyhealth.call.EmergencyReadinessBanner
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -104,6 +105,8 @@ private fun DashboardContent(
         contentPadding = PaddingValues(vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
+        // Shown only when a grant needed for no-tap emergency calls is missing.
+        item { EmergencyReadinessBanner() }
         item { ReachInButton(onClick = onReachIn) }
         item { PartnerSection(uiState) }
         item { MySection(uiState) }

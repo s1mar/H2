@@ -72,9 +72,12 @@ class FirebaseSignalingClient(
 
     override suspend fun send(toUid: String, message: SignalMessage) {
         try {
+            // Stamp the REAL signed-in uid as the sender. Callers construct messages with an
+            // empty fromUid; if we persisted that, incoming()'s self-filter could never match
+            // and each phone would process its own offer/answer/ICE as if from the peer.
             val doc = mapOf(
                 "type" to message.type.name,
-                "fromUid" to message.fromUid,
+                "fromUid" to (myUid() ?: message.fromUid),
                 "room" to message.room,
                 "sdp" to message.sdp,
                 "candidate" to message.candidate,
