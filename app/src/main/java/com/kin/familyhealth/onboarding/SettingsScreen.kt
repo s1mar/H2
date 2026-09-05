@@ -66,7 +66,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EntryScreen(onBack: () -> Unit) {
+fun EntryScreen(onBack: () -> Unit, pairing: Pairing? = null) {
     val context = LocalContext.current
     val settingsRepository = remember { SettingsRepository(context.applicationContext) }
     val scope = rememberCoroutineScope()
@@ -82,8 +82,12 @@ fun EntryScreen(onBack: () -> Unit) {
     // seam produced from signInAnonymously(). firebase-auth-ktx is a FOUNDATION-declared
     // dependency (see build.gradle.kts), not an AGENT-SYNC package, so this isn't a
     // cross-agent-package import.
-    val myUid = remember { FirebaseAuth.getInstance().currentUser?.uid }
+    var myUid by remember { mutableStateOf(FirebaseAuth.getInstance().currentUser?.uid) }
     var showUnpairConfirm by remember { mutableStateOf(false) }
+    // Pair-from-Settings state (lets one phone finish setup before the other is ready).
+    var partnerCodeInput by remember { mutableStateOf("") }
+    var isPairing by remember { mutableStateOf(false) }
+    var pairError by remember { mutableStateOf<String?>(null) }
 
     var cameraGranted by remember { mutableStateOf(hasPermission(context, Manifest.permission.CAMERA)) }
     var micGranted by remember { mutableStateOf(hasPermission(context, Manifest.permission.RECORD_AUDIO)) }
@@ -138,15 +142,78 @@ fun EntryScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(28.dp))
 
             SectionTitle("Pairing")
-            LabeledValue("Your code", myUid ?: "Not signed in yet -- redo onboarding")
+            LabeledValue("Your code", myUid ?: "Not signed in yet")
+            if (myUid == null) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        val p = pairing ?: return@OutlinedButton
+                        scope.launch {
+                            runCatching { p.signInAnonymously() }
+                                .onSuccess { uid ->
+                                    myUid = uid
+                                    runCatching { p.registerFcmToken(uid) }
+                                }
+                                .onFailure { pairError = "Could not sign in. Check your connection and try again." }
+                        }
+                    },
+                    enabled = pairing != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Get my code") }
+            }
             Spacer(Modifier.height(12.dp))
             LabeledValue("Partner's code", partnerUid ?: "Not paired yet")
             Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { showUnpairConfirm = true },
-                enabled = partnerUid != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Unpair") }
+            if (partnerUid == null) {
+                Text(
+                    "Enter your partner's code to pair. You can do this any time -- " +
+                        "for example once their phone is set up too.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = partnerCodeInput,
+                    onValueChange = { partnerCodeInput = it; pairError = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 18.sp),
+                )
+                pairError?.let { err ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(err, color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val p = pairing ?: return@Button
+                        val code = partnerCodeInput.trim()
+                        if (code.isEmpty()) {
+                            pairError = "Enter your partner's code first."
+                            return@Button
+                        }
+                        isPairing = true
+                        pairError = null
+                        scope.launch {
+                            runCatching {
+                                val uid = p.signInAnonymously()
+                                myUid = uid
+                                p.pairWith(code)
+                                settingsRepository.setOnboardingComplete(true)
+                            }.onFailure {
+                                pairError = "Couldn't pair with that code. Double-check it and try again."
+                            }
+                            isPairing = false
+                        }
+                    },
+                    enabled = pairing != null && !isPairing,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (isPairing) "Pairing..." else "Pair") }
+            } else {
+                OutlinedButton(
+                    onClick = { showUnpairConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Unpair") }
+            }
 
             Spacer(Modifier.height(28.dp))
             Divider()

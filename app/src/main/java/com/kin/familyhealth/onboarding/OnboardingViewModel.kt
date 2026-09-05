@@ -14,6 +14,7 @@ import com.kin.familyhealth.data.settings.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -81,6 +82,8 @@ data class OnboardingUiState(
     val isPairing: Boolean = false,
     val pairError: String? = null,
     val paired: Boolean = false,
+    /** Set when onboarding was finished or pairing was skipped; the screen should exit. */
+    val onboardingComplete: Boolean = false,
 )
 
 /**
@@ -96,6 +99,29 @@ class OnboardingViewModel(
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
+
+    init {
+        // If this phone already finished onboarding (or is already paired from a
+        // previous run), exit straight to the dashboard instead of re-running it.
+        viewModelScope.launch {
+            val done = runCatching { settingsRepository.onboardingComplete.first() }.getOrDefault(false)
+            val alreadyPaired = runCatching { settingsRepository.partnerUid.first() }.getOrNull() != null
+            if (done || alreadyPaired) {
+                _uiState.value = _uiState.value.copy(onboardingComplete = true, paired = alreadyPaired)
+            }
+        }
+    }
+
+    /**
+     * Lets one phone finish setup before the other is ready. The user can enter the
+     * partner's code later from Settings; nothing is lost by skipping.
+     */
+    fun skipPairing() {
+        viewModelScope.launch {
+            runCatching { settingsRepository.setOnboardingComplete(true) }
+            _uiState.value = _uiState.value.copy(onboardingComplete = true)
+        }
+    }
 
     fun goToStep(step: OnboardingStep) {
         _uiState.value = _uiState.value.copy(step = step)
@@ -146,8 +172,9 @@ class OnboardingViewModel(
             runCatching {
                 pairing.pairWith(partnerUid)
                 settingsRepository.setPartnerUid(partnerUid)
+                settingsRepository.setOnboardingComplete(true)
             }.onSuccess {
-                _uiState.value = _uiState.value.copy(isPairing = false, paired = true)
+                _uiState.value = _uiState.value.copy(isPairing = false, paired = true, onboardingComplete = true)
             }.onFailure {
                 _uiState.value = _uiState.value.copy(
                     isPairing = false,

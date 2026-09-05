@@ -77,8 +77,10 @@ fun KinNavHost(navController: NavHostController = rememberNavController()) {
         }
 
         composable("settings") {
+            val context = LocalContext.current
             com.kin.familyhealth.onboarding.EntryScreen(
                 onBack = { navController.popBackStack() },
+                pairing = ServiceLocator.pairing(context),
             )
         }
     }

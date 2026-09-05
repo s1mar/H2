@@ -32,6 +32,20 @@ class SettingsRepository(private val context: Context) {
         val MY_DISPLAY_NAME = stringPreferencesKey("my_display_name")
         val REACH_IN_MODE = stringPreferencesKey("reach_in_mode")
         val ACCESSIBILITY_OPT_IN = booleanPreferencesKey("accessibility_opt_in")
+        val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
+    }
+
+    /**
+     * True once the user has finished (or deliberately skipped the pairing step of)
+     * onboarding, so the app opens straight to the dashboard on later launches.
+     * Pairing can be completed later from Settings.
+     */
+    val onboardingComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.ONBOARDING_COMPLETE] ?: false
+    }
+
+    suspend fun setOnboardingComplete(done: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.ONBOARDING_COMPLETE] = done }
     }
 
     val partnerUid: Flow<String?> = context.dataStore.data.map { it[Keys.PARTNER_UID] }

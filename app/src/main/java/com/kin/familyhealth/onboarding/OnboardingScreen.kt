@@ -83,8 +83,10 @@ fun EntryScreen(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(state.paired) {
-        if (state.paired) onFinished()
+    // Exit onboarding once paired OR once the user chose to pair later (skip). Also
+    // fires immediately on later launches, since the ViewModel restores the flag.
+    LaunchedEffect(state.paired, state.onboardingComplete) {
+        if (state.paired || state.onboardingComplete) onFinished()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -119,6 +121,7 @@ fun EntryScreen(
                     onSignIn = viewModel::signInIfNeeded,
                     onPartnerUidChanged = viewModel::onPartnerUidChanged,
                     onSubmit = viewModel::submitPairing,
+                    onSkip = viewModel::skipPairing,
                     onBack = viewModel::previousStep,
                 )
             }
@@ -427,6 +430,7 @@ private fun PairingStep(
     onSignIn: () -> Unit,
     onPartnerUidChanged: (String) -> Unit,
     onSubmit: () -> Unit,
+    onSkip: () -> Unit,
     onBack: () -> Unit,
 ) {
     LaunchedEffect(Unit) { onSignIn() }
@@ -437,7 +441,8 @@ private fun PairingStep(
         body = {
             Text(
                 "Both of you need Kin installed. Share your codes with each other once " +
-                    "-- after that, Kin remembers the pairing.",
+                    "-- after that, Kin remembers the pairing. Setting up one phone first? " +
+                    "Copy your code, tap \"Skip for now\", and enter their code later in Settings.",
                 style = BodyStyle,
             )
             Spacer(Modifier.height(20.dp))
@@ -498,6 +503,10 @@ private fun PairingStep(
                     onClick = onSubmit,
                     modifier = Modifier,
                 )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
+                    Text("Skip for now -- pair later in Settings")
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = onBack) { Text("Back") }
             }
