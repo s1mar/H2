@@ -1,7 +1,6 @@
 package com.kin.familyhealth.onboarding
 
 import android.Manifest
-import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -25,7 +24,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,11 +42,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -56,7 +53,6 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 /**
  * OWNED BY AGENT-ONBOARD. Route: "onboarding" (see ARCHITECTURE.md NavGraph).
@@ -435,8 +431,7 @@ private fun PairingStep(
     onBack: () -> Unit,
 ) {
     LaunchedEffect(Unit) { onSignIn() }
-    val clipboard = LocalClipboard.current
-    val scope = rememberCoroutineScopeCompat()
+    val clipboard = LocalClipboardManager.current
 
     StepScaffold(
         title = "Pair with your person",
@@ -452,6 +447,7 @@ private fun PairingStep(
             when {
                 state.isSigningIn || state.myUid == null -> CircularProgressIndicator()
                 else -> {
+                    val myUid = state.myUid
                     Card {
                         Row(
                             modifier = Modifier
@@ -461,17 +457,13 @@ private fun PairingStep(
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                state.myUid,
+                                myUid,
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.weight(1f),
                             )
                             OutlinedButton(onClick = {
-                                scope.launch {
-                                    runCatching {
-                                        clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Kin code", state.myUid)))
-                                    }
-                                }
+                                clipboard.setText(AnnotatedString(myUid))
                             }) {
                                 Icon(Icons.Filled.ContentCopy, contentDescription = "Copy code")
                             }
@@ -555,6 +547,3 @@ private fun openHealthConnectInstall(context: Context) {
         context.startActivity(webIntent)
     }
 }
-
-@Composable
-private fun rememberCoroutineScopeCompat() = androidx.compose.runtime.rememberCoroutineScope()

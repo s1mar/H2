@@ -1,44 +1,35 @@
 package com.kin.familyhealth.call
 
-import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Alignment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CallEnd
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.kin.familyhealth.call.webrtc.CallConnectionState
@@ -52,20 +43,21 @@ import org.webrtc.SurfaceViewRenderer
  *  - directly by [CallForegroundService] (self-answer primary path — this is the normal
  *    flow; the OS-level showWhenLocked/turnScreenOn manifest flags plus the calls below
  *    get it on screen over the lock screen), or
- *  - by [CallSessionHolder]-backed navigation via `call/{callerId}` (see [CallEntryPoint]).
+ *  - via `call/{callerId}` nav route (see [CallEntryPoint] for the delegate composable).
  *
  * On an incoming call this activity auto-accepts immediately (no ringing UI) — the
- * "ringing" already happened as the full-screen-intent notification itself.
+ * "ringing" already happened as the full-screen-intent notification itself, and
+ * [CallForegroundService] already told the [com.kin.familyhealth.call.webrtc.WebRtcSession]
+ * to start as callee (auto-answer) before this activity was even launched.
  */
 class CallActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Programmatic equivalents of the manifest's showWhenLocked/turnScreenOn, for
-        // pre-Android-8.1 devices and to also dismiss the keyguard on this device family
-        // (minSdk 29 already covers setShowWhenLocked/setTurnScreenOn, but call them
-        // unconditionally behind the version check for clarity/back-compat safety).
+        // Programmatic equivalents of the manifest's showWhenLocked/turnScreenOn, kept for
+        // clarity and for the FLAG_DISMISS_KEYGUARD/FLAG_KEEP_SCREEN_ON behavior the
+        // manifest attributes alone don't cover.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -81,7 +73,6 @@ class CallActivity : ComponentActivity() {
         val callerId = intent.getStringExtra(CallLauncher.EXTRA_CALLER_ID)
             ?: CallSessionHolder.callerId
             ?: "partner"
-        val room = intent.getStringExtra(CallLauncher.EXTRA_ROOM) ?: CallSessionHolder.room
         val isIncoming = intent.getBooleanExtra(CallLauncher.EXTRA_IS_INCOMING, CallSessionHolder.isIncoming)
 
         setContent {
@@ -121,15 +112,9 @@ fun CallScreen(
     val remoteHungUp by (session?.remoteHangup?.collectAsState()
         ?: remember { mutableStateOf(false) })
 
-    DisposableEffect(remoteHungUp) {
-        onDispose { }
-    }
-    // If the peer hangs up, follow them off the screen.
-    if (remoteHungUp) {
-        DisposableEffect(Unit) {
-            onDispose { }
-        }
-        onHangUp()
+    // If the peer hangs up, follow them off the call screen.
+    LaunchedEffect(remoteHungUp) {
+        if (remoteHungUp) onHangUp()
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
@@ -167,7 +152,7 @@ fun CallScreen(
                 }
             }
 
-            // Top banner.
+            // Top banner: emergency label + caller name + status.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -182,10 +167,10 @@ fun CallScreen(
                         text = "EMERGENCY REACH-IN",
                         color = MaterialTheme.colorScheme.onError,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.styleSmall()
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = callerId,
                     color = Color.White,
@@ -198,7 +183,7 @@ fun CallScreen(
                 )
             }
 
-            // Bottom controls.
+            // Bottom controls: mute, hang up, flip camera.
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -206,15 +191,17 @@ fun CallScreen(
                     .padding(bottom = 32.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
+                // Plain text glyphs rather than Material icons: this module intentionally
+                // avoids adding the `material-icons-extended` dependency (out of scope —
+                // AGENT-CALL owns only call/, not build.gradle.kts). Swap for real icons
+                // once that dependency is added by whoever owns the build file.
                 FloatingActionButton(
-                    onClick = {
-                        muted = session?.toggleMute() ?: !muted
-                    },
+                    onClick = { muted = session?.toggleMute() ?: !muted },
                     containerColor = Color.DarkGray,
                     contentColor = Color.White,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
-                    Icon(if (muted) Icons.Filled.MicOff else Icons.Filled.Mic, contentDescription = "Mute")
+                    Text(if (muted) "Unmute" else "Mute", style = MaterialTheme.typography.labelSmall)
                 }
 
                 FloatingActionButton(
@@ -223,7 +210,7 @@ fun CallScreen(
                     contentColor = Color.White,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
-                    Icon(Icons.Filled.CallEnd, contentDescription = "Hang up")
+                    Text("End", style = MaterialTheme.typography.labelSmall)
                 }
 
                 FloatingActionButton(
@@ -232,7 +219,7 @@ fun CallScreen(
                     contentColor = Color.White,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
-                    Icon(Icons.Filled.Cameraswitch, contentDescription = "Flip camera")
+                    Text("Flip", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -245,7 +232,3 @@ private fun statusLabel(isIncoming: Boolean, state: CallConnectionState): String
     CallConnectionState.DISCONNECTED -> "Disconnected"
     CallConnectionState.FAILED -> "Connection failed"
 }
-
-// Small helper kept local to avoid importing an extra typography accessor style; mirrors
-// MaterialTheme.typography.labelSmall to keep the banner text compact.
-private fun MaterialTheme.styleSmall() = this.typography.labelSmall
