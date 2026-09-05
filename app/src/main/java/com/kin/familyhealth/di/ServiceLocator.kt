@@ -127,7 +127,7 @@ object ServiceLocator {
 
     /**
      * Per-call room id. Both uids come first (sorted, so the Firestore rule
-     * `request.auth.uid in room.split('_')` still passes), followed by a timestamp so
+     * `request.auth.uid in room.split('~')` still passes), followed by a timestamp so
      * EVERY call gets a fresh signaling room. A fixed room would replay the previous
      * call's offer/answer/ICE and its HANGUP into the next call, killing it instantly.
      * The callee never derives this; it receives the room in the wake-push payload.

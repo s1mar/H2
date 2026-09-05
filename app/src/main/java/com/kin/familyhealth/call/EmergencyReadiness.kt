@@ -33,14 +33,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.kin.familyhealth.core.Constants
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
 /**
  * The three special-access grants an emergency reach-in depends on to open WITHOUT a
  * tap. Any of them missing means the callee may only get a normal notification:
- *  - Display over other apps: lets the service open the call screen when the phone is
- *    unlocked with the screen on (full-screen intents only auto-launch when locked).
+ *  - Display over other apps (SYSTEM_ALERT_WINDOW): LOAD-BEARING, do not remove. Full-
+ *    screen intents only auto-launch when the phone is locked/screen-off. When it is
+ *    unlocked with the screen on, the service must call startActivity() from the
+ *    background, which Android 10+ blocks -- a foreground service alone does NOT exempt
+ *    it, but holding SYSTEM_ALERT_WINDOW does. Without it the callee only gets a
+ *    tappable banner, which defeats the no-tap guarantee.
  *  - Full-screen notifications (Android 14+ user-revocable): auto-launch over lock screen.
  *  - Battery optimization exemption: stops Doze/OEM managers from killing the wake path.
  */
@@ -75,13 +80,33 @@ object EmergencyReadiness {
      * skip; without it the incoming-call notification, health alerts, and the
      * "call could not start" notice are all silently dropped by the OS.
      */
-    fun notificationsEnabled(context: Context): Boolean =
-        NotificationManagerCompat.from(context).areNotificationsEnabled()
+    fun notificationsEnabled(context: Context): Boolean {
+        val nm = NotificationManagerCompat.from(context)
+        if (!nm.areNotificationsEnabled()) return false
+        // Channel-level: a user can silence just the call channel (long-press -> off),
+        // which drops the incoming-call and failure notices as surely as the app toggle.
+        val channel = nm.getNotificationChannelCompat(Constants.CHANNEL_CALL) ?: return true
+        return channel.importance != NotificationManagerCompat.IMPORTANCE_NONE
+    }
 
+    /** Opens the call channel's own settings page (also reachable when app-level is off). */
     fun openNotificationSettings(context: Context) = open(
         context,
-        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, Constants.CHANNEL_CALL),
+    )
+
+    /**
+     * For runtime permissions the system will no longer prompt for ("don't ask again"):
+     * the only remaining path is the app's own settings page.
+     */
+    fun openAppSettings(context: Context) = open(
+        context,
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}"),
+        ),
     )
 
     fun allReady(context: Context): Boolean =
@@ -133,9 +158,13 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
     var battery by remember { mutableStateOf(EmergencyReadiness.batteryExempt(context)) }
     var camMic by remember { mutableStateOf(EmergencyReadiness.cameraMicGranted(context)) }
     var notifs by remember { mutableStateOf(EmergencyReadiness.notificationsEnabled(context)) }
+    // Once the system dialog has been shown and still denied, Android stops prompting
+    // ("don't ask again"); the button must then route to app settings, not go inert.
+    var askedOnce by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
+        askedOnce = true
         camMic = EmergencyReadiness.cameraMicGranted(context)
         notifs = EmergencyReadiness.notificationsEnabled(context)
     }
@@ -176,20 +205,32 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
             if (!camMic) {
                 Button(
                     onClick = {
-                        permissionLauncher.launch(
-                            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-                        )
+                        if (askedOnce) {
+                            EmergencyReadiness.openAppSettings(context)
+                        } else {
+                            permissionLauncher.launch(
+                                arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                            )
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Grant camera & microphone") }
+                ) {
+                    Text(
+                        if (askedOnce) "Open app settings to allow camera & mic"
+                        else "Grant camera & microphone"
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
             }
             if (!notifs) {
                 Button(
                     onClick = {
-                        if (Build.VERSION.SDK_INT >= 33) {
+                        val appLevelOff =
+                            !NotificationManagerCompat.from(context).areNotificationsEnabled()
+                        if (Build.VERSION.SDK_INT >= 33 && appLevelOff && !askedOnce) {
                             permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
                         } else {
+                            // Channel silenced, pre-13, or already refused: go to settings.
                             EmergencyReadiness.openNotificationSettings(context)
                         }
                     },

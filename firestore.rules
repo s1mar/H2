@@ -6,7 +6,7 @@ rules_version = '2';
 //   users/{uid}                      -> fcmToken (owner only; Admin SDK reads for relay)
 //   pairings/{uid}.partnerUid        -> mutual pairing pointers
 //   partners/{uid}/latest/latest     -> vitals snapshot
-//   signaling/{room}[/messages/*]    -> room = the two uids sorted + joined by "_"
+//   signaling/{room}[/messages/*]    -> room = the two uids sorted + timestamp, joined by "~"
 //   outbound_pushes/{id}             -> emergency-push relay request (Cloud Function)
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -52,7 +52,7 @@ service cloud.firestore {
       allow write: if isSelf(uid);
     }
 
-    // WebRTC signaling. The room id embeds both uids ("uidA_uidB", sorted), so
+    // WebRTC signaling. The room id embeds both uids ("uidA~uidB~timestamp", sorted), so
     // access is granted iff the caller's uid is one of the room's two halves.
     match /signaling/{room} {
       allow read, write: if isSignedIn() && request.auth.uid in room.split('~');
