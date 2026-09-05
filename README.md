@@ -128,6 +128,46 @@ Also: **never "Force stop" Kin** from Android's app settings. A force-stopped ap
 cannot receive the wake-push at all until it is opened again by hand. This is a
 platform rule, not something the app can work around.
 
+## Before you trust it: the real-device test
+
+Code review cannot exercise a locked Samsung at 3 a.m. Only the two phones can.
+**Do not rely on Kin for a real emergency until every item below passes on
+both phones.** Repeat test 3 every few weeks and after any Android update, which
+can silently reset permissions.
+
+**Setup checks, each phone**
+- The dashboard shows **no red banner**. If it does, tap each fix button until
+  it disappears.
+- Settings → Pairing shows your partner's code.
+- Galaxy: Settings → Battery → Kin is in "Never sleeping apps", not "Sleeping".
+
+**Test 1 — vitals.** After wearing the watch for an hour, the *other* phone's
+dashboard shows your numbers with a recent "updated" time.
+
+**Test 2 — basic call.** Both on Wi-Fi, both unlocked, Kin open on the receiving
+phone. Tap Reach in. The other phone connects **with no tap**, picture and sound
+both ways. Hang up: both phones return to normal, no leftover notification.
+
+**Test 3 — the real one: locked phone.** Receiving phone locked, screen off, Kin
+not open (swipe it out of recents, but never "Force stop"). Wait five minutes.
+Tap Reach in from the other phone. The receiving phone's screen must turn on and
+the call must connect **by itself within about 30 seconds.** If you only get a
+notification you have to tap, a permission is missing: check the red banner.
+
+**Test 4 — mobile data.** Repeat test 3 with **both** phones on mobile data,
+Wi-Fi off. If it shows "No answer" or "Connection failed", TURN is not
+configured yet (see Production notes) and the app is Wi-Fi-only until it is.
+
+**Test 5 — second call.** Right after hanging up test 3, reach in again. It must
+connect again. (This checks a bug where the second call used to die instantly.)
+
+**Test 6 — no answer.** Turn the receiving phone fully off. Reach in. Within
+about 30 seconds the caller's screen must say **"No answer"** with a "Call their
+phone instead" button. This proves you will *know* when help did not get through.
+
+**Test 7 — overnight.** Leave both phones as they normally are overnight. In the
+morning, reach in cold. This catches Samsung's overnight app-killing.
+
 ## Security & privacy
 
 - Anonymous Firebase Auth; only your **mutually-paired** partner can read your
