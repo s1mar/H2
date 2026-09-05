@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import com.google.firebase.FirebaseApp
 import com.kin.familyhealth.core.Constants
+import com.kin.familyhealth.di.ServiceLocator
 
 /**
  * Application entry point. FOUNDATION-owned.
@@ -24,6 +25,8 @@ class KinApp : Application() {
         super.onCreate()
         initFirebaseSafely()
         createNotificationChannels()
+        // Inject the signaling client so incoming/outgoing calls can start.
+        runCatching { ServiceLocator.installCallSignaling(this) }
     }
 
     private fun initFirebaseSafely() {

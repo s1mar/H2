@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 /**
  * COMMANDER-owned integration contract between AGENT-SYNC and AGENT-CALL.
  *
- * AGENT-SYNC implements this (Firestore signaling docs at `signaling/{uid}/**`
+ * AGENT-SYNC implements this (Firestore signaling docs at `signaling rooms`
  * plus a high-priority FCM push to wake the callee). AGENT-CALL consumes it
  * from the WebRTC layer. Neither agent redefines these types.
  */

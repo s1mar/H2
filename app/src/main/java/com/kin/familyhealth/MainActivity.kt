@@ -3,32 +3,26 @@ package com.kin.familyhealth
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.kin.familyhealth.di.ServiceLocator
 import com.kin.familyhealth.ui.theme.KinTheme
+import com.kin.familyhealth.vitals.VitalsViewModel
 
 /**
- * FOUNDATION-owned Compose host + NavGraph.
- *
- * Routes (see ARCHITECTURE.md "Shared contracts"):
- *   - onboarding       -> AGENT-ONBOARD
- *   - dashboard        -> AGENT-VITALS
- *   - call/{callerId}  -> AGENT-CALL
- *   - settings         -> FOUNDATION owns the settings screen shell; wire up
- *                         SettingsRepository-backed controls as needed.
- *
- * Feature agents: expose a single `@Composable EntryScreen(nav, ...)` per
- * route in your own package and wire it into the NavHost below by replacing
- * the corresponding placeholder composable. Do not restructure the NavHost.
+ * FOUNDATION-owned Compose host + NavGraph, wired by the commander to the real
+ * feature EntryScreens. Routes: onboarding, dashboard, call/{callerId}, settings.
+ * EntryScreen calls are fully qualified to avoid overload ambiguity (onboarding
+ * exposes two EntryScreen overloads in one package).
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,29 +40,46 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun KinNavHost(navController: NavHostController = rememberNavController()) {
     NavHost(navController = navController, startDestination = "onboarding") {
-        composable("onboarding") {
-            // AGENT-ONBOARD fills this
-            LoadingPlaceholder("onboarding")
-        }
-        composable("dashboard") {
-            // AGENT-VITALS fills this
-            LoadingPlaceholder("dashboard")
-        }
-        composable("call/{callerId}") {
-            // AGENT-CALL fills this
-            LoadingPlaceholder("call")
-        }
-        composable("settings") {
-            // FOUNDATION: replace with a real settings screen backed by
-            // SettingsRepository if/when needed; placeholder for now.
-            LoadingPlaceholder("settings")
-        }
-    }
-}
 
-@Composable
-private fun LoadingPlaceholder(route: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text("Loading… ($route)")
+        composable("onboarding") {
+            val context = LocalContext.current
+            com.kin.familyhealth.onboarding.EntryScreen(
+                onFinished = {
+                    navController.navigate("dashboard") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                },
+                pairing = ServiceLocator.pairing(context),
+                healthConnectPermissions = ServiceLocator.healthPermissions(context),
+            )
+        }
+
+        composable("dashboard") {
+            val context = LocalContext.current
+            com.kin.familyhealth.dashboard.EntryScreen(
+                onOpenSettings = { navController.navigate("settings") },
+                onReachIn = { ServiceLocator.startReachIn(context) },
+                factory = VitalsViewModel.Factory(
+                    context,
+                    ServiceLocator.vitalsSync(context),
+                    ServiceLocator.myUid(),
+                ),
+            )
+        }
+
+        composable(
+            route = "call/{callerId}",
+            arguments = listOf(navArgument("callerId") { type = NavType.StringType }),
+        ) { entry ->
+            com.kin.familyhealth.call.EntryScreen(
+                callerId = entry.arguments?.getString("callerId").orEmpty(),
+            )
+        }
+
+        composable("settings") {
+            com.kin.familyhealth.onboarding.EntryScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
     }
 }

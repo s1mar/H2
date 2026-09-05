@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -465,7 +464,7 @@ private fun PairingStep(
                             OutlinedButton(onClick = {
                                 clipboard.setText(AnnotatedString(myUid))
                             }) {
-                                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy code")
+                                Text("Copy")
                             }
                         }
                     }
