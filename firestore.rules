@@ -55,9 +55,9 @@ service cloud.firestore {
     // WebRTC signaling. The room id embeds both uids ("uidA_uidB", sorted), so
     // access is granted iff the caller's uid is one of the room's two halves.
     match /signaling/{room} {
-      allow read, write: if isSignedIn() && request.auth.uid in room.split('_');
+      allow read, write: if isSignedIn() && request.auth.uid in room.split('~');
       match /{document=**} {
-        allow read, write: if isSignedIn() && request.auth.uid in room.split('_');
+        allow read, write: if isSignedIn() && request.auth.uid in room.split('~');
       }
     }
 

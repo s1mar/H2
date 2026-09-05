@@ -1,5 +1,8 @@
 package com.kin.familyhealth.call.webrtc
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import com.kin.familyhealth.BuildConfig
 
 import android.content.Context
@@ -158,7 +161,16 @@ class WebRtcSession(
         val enumerator = Camera2Enumerator(appContext)
         val frontName = enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) }
         val backName = enumerator.deviceNames.firstOrNull { enumerator.isBackFacing(it) }
-        val chosenName = frontName ?: backName ?: enumerator.deviceNames.firstOrNull()
+        // Without CAMERA permission don't even try to open a camera: fall back to an
+        // audio-only call rather than failing capture (the service already started with
+        // only the foreground-service types we are permitted to use).
+        val cameraGranted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        val chosenName = if (cameraGranted) {
+            frontName ?: backName ?: enumerator.deviceNames.firstOrNull()
+        } else {
+            null
+        }
         isFrontCamera = chosenName != null && chosenName == frontName
 
         val capturer = chosenName?.let { enumerator.createCapturer(it, null) }

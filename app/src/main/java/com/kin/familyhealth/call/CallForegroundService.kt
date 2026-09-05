@@ -9,7 +9,14 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
+import android.Manifest
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
+import com.kin.familyhealth.MainActivity
 import com.kin.familyhealth.core.CallLauncher
 import com.kin.familyhealth.di.ServiceLocator
 import com.kin.familyhealth.core.Constants
@@ -59,7 +66,28 @@ class CallForegroundService : Service() {
         }
 
         // Step 2: startForeground() BEFORE any camera/mic access.
-        startForeground(NOTIFICATION_ID, buildCallNotification(callerId, room, isIncoming))
+        // Android 14+ throws SecurityException if we start with the camera/microphone
+        // foreground-service type without holding that runtime permission -- which would
+        // crash the process and silently kill the emergency call. Start with exactly the
+        // types we are allowed to use; with neither, never crash: tell the user what is
+        // missing and bail out so the caller's 30s watchdog reports no-answer.
+        val fgsType = grantedForegroundTypes()
+        if (fgsType == 0) {
+            Log.e(TAG, "Camera and microphone permissions both missing; cannot run a call.")
+            postPermissionMissingNotification()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            ServiceCompat.startForeground(
+                this, NOTIFICATION_ID, buildCallNotification(callerId, room, isIncoming), fgsType
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "startForeground failed", t)
+            postPermissionMissingNotification()
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         acquireWakeLock()
 
@@ -95,6 +123,40 @@ class CallForegroundService : Service() {
     override fun onDestroy() {
         releaseWakeLock()
         super.onDestroy()
+    }
+
+    /** Bitmask of the declared FGS types whose runtime permission is currently granted. */
+    private fun grantedForegroundTypes(): Int {
+        var type = 0
+        if (hasPermission(Manifest.permission.CAMERA)) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        }
+        if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+        return type
+    }
+
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    /** Loud, tappable notice: the emergency call could not run because a permission is missing. */
+    private fun postPermissionMissingNotification() {
+        val open = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val notification = NotificationCompat.Builder(this, Constants.CHANNEL_CALL)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle("Emergency call could not start")
+            .setContentText("Camera or microphone permission is missing. Open Kin to fix it.")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        runCatching { NotificationManagerCompat.from(this).notify(NOTIFICATION_ID + 1, notification) }
     }
 
     private fun acquireWakeLock() {

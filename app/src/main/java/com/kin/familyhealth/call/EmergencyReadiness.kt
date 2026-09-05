@@ -27,7 +27,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
@@ -55,8 +60,19 @@ object EmergencyReadiness {
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
 
+    /**
+     * Camera + microphone runtime permissions. Without them Android 14+ refuses to even
+     * start the call's foreground service, so they are a hard requirement, not a nicety.
+     */
+    fun cameraMicGranted(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
     fun allReady(context: Context): Boolean =
-        overlayGranted(context) && fullScreenIntentAllowed(context) && batteryExempt(context)
+        cameraMicGranted(context) && overlayGranted(context) &&
+            fullScreenIntentAllowed(context) && batteryExempt(context)
 
     fun openOverlaySettings(context: Context) = open(
         context,
@@ -101,6 +117,10 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
     var overlay by remember { mutableStateOf(EmergencyReadiness.overlayGranted(context)) }
     var fullScreen by remember { mutableStateOf(EmergencyReadiness.fullScreenIntentAllowed(context)) }
     var battery by remember { mutableStateOf(EmergencyReadiness.batteryExempt(context)) }
+    var camMic by remember { mutableStateOf(EmergencyReadiness.cameraMicGranted(context)) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { camMic = EmergencyReadiness.cameraMicGranted(context) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -108,13 +128,14 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                 overlay = EmergencyReadiness.overlayGranted(context)
                 fullScreen = EmergencyReadiness.fullScreenIntentAllowed(context)
                 battery = EmergencyReadiness.batteryExempt(context)
+                camMic = EmergencyReadiness.cameraMicGranted(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (overlay && fullScreen && battery) return
+    if (overlay && fullScreen && battery && camMic) return
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -133,6 +154,17 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
             Spacer(Modifier.height(10.dp))
+            if (!camMic) {
+                Button(
+                    onClick = {
+                        permissionLauncher.launch(
+                            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Grant camera & microphone") }
+                Spacer(Modifier.height(6.dp))
+            }
             if (!overlay) {
                 Button(
                     onClick = { EmergencyReadiness.openOverlaySettings(context) },

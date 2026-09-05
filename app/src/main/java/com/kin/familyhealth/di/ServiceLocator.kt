@@ -133,7 +133,9 @@ object ServiceLocator {
      * The callee never derives this; it receives the room in the wake-push payload.
      */
     fun roomFor(a: String?, b: String): String =
-        (listOfNotNull(a, b).sorted() + System.currentTimeMillis().toString()).joinToString("_")
+        // '~' never appears in Firebase uids (unlike '_' in base64url), so the rules'
+        // split('~') can't fragment a uid and wrongly deny a legitimate participant.
+        (listOfNotNull(a, b).sorted() + System.currentTimeMillis().toString()).joinToString("~")
 }
 
 /** Offline fallback: keeps the dashboard alive with no partner data. */

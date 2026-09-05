@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
     <exclude domain="sharedpref" path="." />
+    <!-- DataStore settings hold partnerUid; restoring them onto a NEW phone (new
+         anonymous uid) would carry a stale pairing. Keep them device-local. -->
+    <exclude domain="file" path="datastore/" />
 </full-backup-content>
