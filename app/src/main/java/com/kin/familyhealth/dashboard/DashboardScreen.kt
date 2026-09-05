@@ -17,14 +17,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bedtime
-import androidx.compose.material.icons.filled.BatteryFull
-import androidx.compose.material.icons.filled.DirectionsWalk
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Air
-import androidx.compose.material.icons.filled.SosOutlined
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,7 +35,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -131,10 +123,8 @@ private fun ReachInButton(onClick: () -> Unit) {
             contentColor = MaterialTheme.colorScheme.onError,
         ),
     ) {
-        Icon(Icons.Filled.SosOutlined, contentDescription = null, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.height(0.dp))
         Text(
-            "  Reach in",
+            "🆘  Reach in",
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
         )
@@ -213,15 +203,15 @@ private fun MySection(uiState: DashboardUiState) {
 @Composable
 private fun VitalsCardGrid(vitals: Vitals) {
     val cards = buildList {
-        vitals.heartRateBpm?.let { add(VitalCardData(Icons.Filled.Favorite, "Heart rate", "$it bpm")) }
-        vitals.restingHrBpm?.let { add(VitalCardData(Icons.Filled.MonitorHeart, "Resting HR", "$it bpm")) }
-        vitals.steps?.let { add(VitalCardData(Icons.Filled.DirectionsWalk, "Steps today", "$it")) }
+        vitals.heartRateBpm?.let { add(VitalCardData("❤️", "Heart rate", "$it bpm")) }
+        vitals.restingHrBpm?.let { add(VitalCardData("💓", "Resting HR", "$it bpm")) }
+        vitals.steps?.let { add(VitalCardData("🚶", "Steps today", "$it")) }
         vitals.sleepMinutes?.let {
             val hours = it / 60
             val mins = it % 60
-            add(VitalCardData(Icons.Filled.Bedtime, "Sleep last night", "${hours}h ${mins}m"))
+            add(VitalCardData("😴", "Sleep last night", "${hours}h ${mins}m"))
         }
-        vitals.spo2Percent?.let { add(VitalCardData(Icons.Filled.Air, "SpO2", "${it.toInt()}%")) }
+        vitals.spo2Percent?.let { add(VitalCardData("🫁", "SpO2", "${it.toInt()}%")) }
     }
 
     if (cards.isEmpty()) {
@@ -239,7 +229,7 @@ private fun VitalsCardGrid(vitals: Vitals) {
     }
 }
 
-private data class VitalCardData(val icon: ImageVector, val label: String, val value: String)
+private data class VitalCardData(val emoji: String, val label: String, val value: String)
 
 @Composable
 private fun VitalCard(data: VitalCardData) {
@@ -252,12 +242,7 @@ private fun VitalCard(data: VitalCardData) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(
-                data.icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp),
-            )
+            Text(data.emoji, fontSize = 26.sp)
             Text(data.value, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text(
                 data.label,
@@ -281,20 +266,11 @@ private fun LastUpdatedAndBattery(vitals: Vitals) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         vitals.batteryPct?.let { battery ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.BatteryFull,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(0.dp))
-                Text(
-                    " $battery%",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                "🔋 $battery%",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
