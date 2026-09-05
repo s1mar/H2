@@ -25,6 +25,10 @@ private const val TAG = "CallBootReceiver"
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        Log.i(TAG, "Boot completed; call package has no state to restore.")
+        // Re-arm the serverless reach-in listener after a reboot so the phone can be
+        // reached without anyone opening the app. (Android 14 permits starting a
+        // specialUse foreground service from BOOT_COMPLETED.)
+        Log.i(TAG, "Boot completed; starting StandbyService.")
+        StandbyService.start(context)
     }
 }

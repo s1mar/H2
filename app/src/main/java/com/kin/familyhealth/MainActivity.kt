@@ -27,6 +27,8 @@ import com.kin.familyhealth.vitals.VitalsViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Keep the serverless reach-in listener alive; idempotent.
+        com.kin.familyhealth.call.StandbyService.start(this)
         setContent {
             KinTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {

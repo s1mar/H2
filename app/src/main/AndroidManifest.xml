@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Reach-in full screen / overlay -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
@@ -121,6 +122,16 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Serverless wake path: always-on listener for incoming reach-ins. -->
+        <service
+            android:name=".call.StandbyService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Standing by to receive emergency reach-in calls from the paired family member" />
         </service>
 
         <!-- AGENT-CALL: relaunch reach-in listeners after boot -->

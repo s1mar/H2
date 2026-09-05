@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import com.kin.familyhealth.core.Constants
 import com.kin.familyhealth.core.SignalMessage
 import com.kin.familyhealth.core.SignalType
 import com.kin.familyhealth.core.SignalingClient
@@ -49,7 +50,18 @@ class FirebaseSignalingClient(
             firestore.collection(COLLECTION_SIGNALING).document(room)
                 .set(mapOf("room" to room, "callerId" to callerId, "toUid" to toUid))
 
-            // SERVER-SIDE: a Cloud Function must relay this as an FCM push.
+            // PRIMARY wake path, no server required: the callee's StandbyService keeps
+            // a listener on incoming_calls/{toUid} and starts the call from this doc.
+            firestore.collection(Constants.COLLECTION_INCOMING_CALLS).document(toUid)
+                .set(
+                    mapOf(
+                        "room" to room,
+                        "callerId" to callerId,
+                        "at" to FieldValue.serverTimestamp(),
+                    )
+                )
+
+            // OPTIONAL bonus path: a Cloud Function may relay this as an FCM push.
             // A client app cannot deliver FCM to another device directly — it can
             // only write a request document. A Firestore-triggered Cloud Function
             // (onCreate of outbound_pushes/{id}) must read this doc, send a

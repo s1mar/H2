@@ -69,6 +69,15 @@ service cloud.firestore {
       }
     }
 
+    // incoming_calls/{uid}: the paired partner writes a call invite here to ring
+    // uid. uid's phone listens on its own doc (needs no server) and deletes it once
+    // handled. Only a mutually-paired partner may ring someone.
+    match /incoming_calls/{uid} {
+      allow read, delete: if isSelf(uid);
+      allow create, update: if isPairedWith(uid)
+        && request.resource.data.callerId == request.auth.uid;
+    }
+
     // Emergency-push relay requests: a caller may create one addressed from
     // themselves; only the Admin SDK (Cloud Function) reads/clears them.
     match /outbound_pushes/{pushId} {

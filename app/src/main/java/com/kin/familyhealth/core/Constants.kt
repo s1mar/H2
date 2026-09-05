@@ -20,6 +20,13 @@ object Constants {
     const val KEY_CANDIDATE = "candidate"
     const val KEY_ROOM = "room"
 
+    /**
+     * Serverless wake path: the caller writes incoming_calls/{calleeUid}; the callee's
+     * StandbyService listens on its own doc and starts the call from it. Works with no
+     * Cloud Function / billing. FCM (if the relay is ever deployed) is a bonus.
+     */
+    const val COLLECTION_INCOMING_CALLS = "incoming_calls"
+
     // FCM data message-type values
     const val TYPE_EMERGENCY_CALL = "EMERGENCY_CALL"
     const val TYPE_SIGNAL = "SIGNAL"
