@@ -1,0 +1,74 @@
+name: Deploy Firebase
+
+# Publishes the Firestore security rules (required for pairing/vitals) and the
+# emergency-push relay Cloud Function automatically. Runs whenever those files
+# change, and on demand via "Run workflow". Needs ONE repo secret:
+#   FIREBASE_SERVICE_ACCOUNT  = the JSON from Firebase console ->
+#     Project settings -> Service accounts -> "Generate new private key"
+on:
+  push:
+    branches: [ "claude/family-health-emergency-contact-h6hucg" ]
+    paths:
+      - "firestore.rules"
+      - "server/**"
+      - ".github/workflows/deploy-firebase.yml"
+  workflow_dispatch: {}
+
+env:
+  FIREBASE_PROJECT: bubu-b0d88
+
+jobs:
+  rules:
+    name: Publish Firestore rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+      - name: Write service account
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::error::Missing repo secret FIREBASE_SERVICE_ACCOUNT (Firebase console -> Project settings -> Service accounts -> Generate new private key -> paste the JSON)."
+            exit 1
+          fi
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Deploy rules
+        working-directory: server
+        run: firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT" --non-interactive
+
+  functions:
+    name: Deploy emergency-push relay function
+    runs-on: ubuntu-latest
+    needs: rules
+    # Cloud Functions need the project on the Blaze (pay-as-you-go) plan, which
+    # is free at this usage but requires a billing account. Don't block the
+    # rules deploy on that; surface it as a warning instead.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Firebase CLI + function deps
+        run: |
+          npm install -g firebase-tools
+          cd server/functions && npm install
+      - name: Write service account
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/sa.json" >> "$GITHUB_ENV"
+      - name: Deploy function
+        working-directory: server
+        run: |
+          if ! firebase deploy --only functions --project "$FIREBASE_PROJECT" --non-interactive --force; then
+            echo "::warning::Function deploy failed. Most common cause: the Firebase project is not on the Blaze plan (Cloud Functions require it; free at this usage). Rules deployed fine; only the emergency wake-push relay is affected."
+            exit 1
+          fi
