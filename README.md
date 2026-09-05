@@ -64,9 +64,12 @@ high-priority FCM message. Everything else runs on-device.
 
 1. **Create a Firebase project** at <https://console.firebase.google.com>.
    Enable: **Authentication → Anonymous**, **Firestore**, **Cloud Messaging**.
-2. **Register the Android app** with package name `com.kin.familyhealth`,
-   download the real **`google-services.json`**, and replace the placeholder at
-   `app/google-services.json`.
+2. **Register the Android app** with package name `com.kin.familyhealth` and
+   download **`google-services.json`**. Do NOT commit it (public repo, holds an
+   API key). Add it as a repo secret named `GOOGLE_SERVICES_JSON`: GitHub →
+   **Settings → Secrets and variables → Actions → New repository secret** → paste
+   the whole file contents → Save. (For a local build instead, save it at
+   `app/google-services.json`; git ignores it there.)
 3. **Deploy rules + function**:
    ```bash
    npm i -g firebase-tools
@@ -74,26 +77,27 @@ high-priority FCM message. Everything else runs on-device.
    (cd functions && npm install)
    firebase deploy --only firestore:rules,functions
    ```
-4. **Point the Android SDK path**: create `local.properties` with
-   `sdk.dir=/path/to/Android/sdk` (not committed).
+4. **(Local builds only)** point the Android SDK path: create `local.properties`
+   with `sdk.dir=/path/to/Android/sdk` (not committed). The cloud build needs
+   nothing here.
 
 ## Build & install the APK
 
+**Easiest — the cloud build (no tools):** once the `GOOGLE_SERVICES_JSON` secret
+is set, open the repo's **Actions** tab → **Build APK** → **Run workflow** (or
+just push any commit). When it finishes, open the run and download the
+**`kin-debug-apk`** artifact — the zip contains `app-debug.apk`.
+
+**Or build locally** (needs Android Studio / the Android SDK):
 ```bash
-./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug   # -> app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Install on **both** phones. Then on each phone:
-
-1. Open Kin, walk through onboarding, grant camera / mic / notifications.
-2. Grant the Health Connect read permissions (install Health Connect if prompted).
-3. Approve the special-access nudges: display-over-other-apps, ignore battery
-   optimization, full-screen notifications — these let the emergency call show
-   over the lock screen and survive Doze.
-4. On the pairing screen, each phone shows its own code. Enter **the other
-   phone's** code and confirm. Done — vitals start syncing and either side can
-   reach in.
+Install on **both** phones: enable installing from unknown sources, copy the APK
+over, tap to install. Then open Kin and go through onboarding on each phone —
+grant camera / mic / notifications, grant Health Connect, approve the
+display-over-apps / battery / full-screen prompts, and (on the Galaxy phone) stop
+the OS from sleeping the app. Finally swap pairing codes once.
 
 ## Reach-in modes (Settings)
 
