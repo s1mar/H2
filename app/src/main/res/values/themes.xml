@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme: Compose supplies the real Material3 theme
+         (see ui/theme/Theme.kt). This is the manifest/AndroidManifest anchor
+         so activities have a valid style before Compose sets content. -->
+    <style name="Theme.Kin" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

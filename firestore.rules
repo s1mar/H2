@@ -1,0 +1,55 @@
+rules_version = '2';
+
+// Kin — Family Health & Emergency Reach-In
+// Every document is scoped to exactly two paired UIDs. A user may only read
+// or write documents in their own partner-pairing space, and only once both
+// UIDs are mutually paired (users/{uid}.partnerUid == the other UID).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // users/{uid} stores each user's own profile, including partnerUid —
+    // the mutual pairing pointer. Only the owner may read/write their own doc.
+    match /users/{uid} {
+      allow read, write: if isSelf(uid);
+    }
+
+    function partnerUidOf(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.partnerUid;
+    }
+
+    function isPairedWith(uid) {
+      return isSignedIn() &&
+        partnerUidOf(request.auth.uid) == uid &&
+        partnerUidOf(uid) == request.auth.uid;
+    }
+
+    // partners/{uid}/latest holds the vitals snapshot (see vitals/model/Vitals.kt).
+    // Readable/writable by the uid owner themselves, and readable by their
+    // mutually-paired partner only.
+    match /partners/{uid}/latest {
+      allow read: if isSelf(uid) || isPairedWith(uid);
+      allow write: if isSelf(uid);
+    }
+
+    // signaling/{uid}/... WebRTC offer/answer/ICE candidate exchange for the
+    // emergency reach-in call. Only the paired partner may write signaling
+    // messages addressed to a given uid; only that uid may read them.
+    match /signaling/{uid}/{document=**} {
+      allow read: if isSelf(uid);
+      allow write: if isPairedWith(uid);
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

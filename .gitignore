@@ -1,0 +1,19 @@
+# Android / Gradle build output (match anywhere, not just root)
+.gradle/
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.dex
+*.hprof
+local.properties
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# app/google-services.json is committed intentionally as a placeholder so the
+# google-services Gradle plugin can parse it; replace with the real file before shipping.
