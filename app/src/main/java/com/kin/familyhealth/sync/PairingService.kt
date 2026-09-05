@@ -8,10 +8,14 @@ import com.google.firebase.firestore.SetOptions
 import com.google.firebase.messaging.FirebaseMessaging
 import com.kin.familyhealth.data.settings.SettingsRepository
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 private const val TAG = "PairingService"
+
+/** Upper bound for the two mutual pairing writes; beyond this we report failure. */
+private const val PAIR_TIMEOUT_MS = 20_000L
 
 /**
  * Local await() for a Play Services [Task], so this module doesn't need the
@@ -75,16 +79,18 @@ class PairingService(
     suspend fun pairWith(partnerUid: String) {
         val myUid = auth.currentUser?.uid
             ?: throw IllegalStateException("pairWith() called before sign-in")
-        try {
+        // Do NOT swallow failures. A pairing that never reached the backend must surface
+        // as an error; otherwise the UI says "paired" while the partner can never read our
+        // vitals. Bounded so an offline phone fails fast instead of hanging on "Pairing...".
+        withTimeout(PAIR_TIMEOUT_MS) {
             firestore.collection("pairings").document(myUid)
                 .set(mapOf("partnerUid" to partnerUid), SetOptions.merge())
                 .await()
             firestore.collection("pairings").document(partnerUid)
                 .set(mapOf("partnerUid" to myUid), SetOptions.merge())
                 .await()
-        } catch (t: Throwable) {
-            Log.w(TAG, "pairWith() failed to write pairing docs", t)
         }
+        // Only persist locally once BOTH mutual writes are confirmed.
         settingsRepository.setPartnerUid(partnerUid)
     }
 }

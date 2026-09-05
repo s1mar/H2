@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.kin.familyhealth.call.webrtc.CallConnectionState
 import com.kin.familyhealth.call.webrtc.WebRtcSession
+import android.content.Intent
+import androidx.compose.runtime.key
 import com.kin.familyhealth.core.CallLauncher
 import com.kin.familyhealth.ui.theme.KinTheme
 import org.webrtc.SurfaceViewRenderer
@@ -51,6 +53,30 @@ import org.webrtc.SurfaceViewRenderer
  * to start as callee (auto-answer) before this activity was even launched.
  */
 class CallActivity : ComponentActivity() {
+
+    // Held as Compose state so a SECOND call delivered to this singleTask activity via
+    // onNewIntent() (Android does not re-run onCreate) re-renders against the NEW session.
+    // Without this the UI kept a stale, disposed WebRtcSession and could crash on
+    // released EGL/renderer resources exactly during a second urgent reach-in.
+    private val callerIdState = mutableStateOf("partner")
+    private val isIncomingState = mutableStateOf(false)
+    private val sessionState = mutableStateOf<WebRtcSession?>(null)
+
+    private fun applyIntent(intent: Intent?) {
+        callerIdState.value = intent?.getStringExtra(CallLauncher.EXTRA_CALLER_ID)
+            ?: CallSessionHolder.callerId
+            ?: "partner"
+        isIncomingState.value =
+            intent?.getBooleanExtra(CallLauncher.EXTRA_IS_INCOMING, CallSessionHolder.isIncoming)
+                ?: CallSessionHolder.isIncoming
+        sessionState.value = CallSessionHolder.session
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyIntent(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,22 +96,24 @@ class CallActivity : ComponentActivity() {
                 android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
 
-        val callerId = intent.getStringExtra(CallLauncher.EXTRA_CALLER_ID)
-            ?: CallSessionHolder.callerId
-            ?: "partner"
-        val isIncoming = intent.getBooleanExtra(CallLauncher.EXTRA_IS_INCOMING, CallSessionHolder.isIncoming)
+        applyIntent(intent)
 
         setContent {
             KinTheme {
-                CallScreen(
-                    callerId = callerId,
-                    isIncoming = isIncoming,
-                    session = CallSessionHolder.session,
-                    onHangUp = {
-                        CallForegroundService.stop(this)
-                        finish()
-                    }
-                )
+                val session = sessionState.value
+                // key() forces a full recomposition (fresh video renderers) whenever the
+                // session object changes, e.g. after onNewIntent for a new call.
+                key(session) {
+                    CallScreen(
+                        callerId = callerIdState.value,
+                        isIncoming = isIncomingState.value,
+                        session = session,
+                        onHangUp = {
+                            CallForegroundService.stop(this)
+                            finish()
+                        }
+                    )
+                }
             }
         }
     }

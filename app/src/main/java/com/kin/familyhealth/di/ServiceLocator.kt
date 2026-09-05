@@ -114,6 +114,9 @@ object ServiceLocator {
      * room id, then start the outgoing emergency call.
      */
     fun startReachIn(context: Context) {
+        // Ignore taps while a call is already live: a double-tap would spawn a second
+        // room and dispose the first session underneath the open call screen.
+        CallSessionHolder.session?.let { if (!it.isDisposed) return }
         val app = context.applicationContext
         CoroutineScope(Dispatchers.IO).launch {
             val partnerUid = runCatching { settings(app).partnerUid.first() }.getOrNull() ?: return@launch

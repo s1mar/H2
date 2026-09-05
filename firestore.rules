@@ -32,12 +32,18 @@ service cloud.firestore {
       allow read, write: if isSelf(uid);
     }
 
-    // Pairing pointers. A user writes their own doc, and may set the partner's
-    // pointer back to themselves (mutual opt-in for a private 2-person app).
+    // Pairing pointers. A user always controls their own doc. They may write the
+    // PARTNER's pointer back to themselves ONLY if that partner is not yet paired
+    // (doc absent) or already points at them (re-pair / refresh). This blocks a
+    // third party from overwriting an existing pairing and hijacking vitals access.
     match /pairings/{uid} {
       allow read: if isSignedIn();
       allow write: if isSelf(uid)
-        || request.resource.data.partnerUid == request.auth.uid;
+        || (isSignedIn()
+            && request.resource.data.partnerUid == request.auth.uid
+            && (!exists(/databases/$(database)/documents/pairings/$(uid))
+                || get(/databases/$(database)/documents/pairings/$(uid)).data.partnerUid
+                     == request.auth.uid));
     }
 
     // Vitals snapshot: owner writes; owner and paired partner read.

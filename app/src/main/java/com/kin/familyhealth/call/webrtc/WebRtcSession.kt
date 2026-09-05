@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -370,6 +371,9 @@ class WebRtcSession(
         if (disposed) return
         disposed = true
         incomingJob?.cancel()
+        // Tear down the whole scope so no straggling signaling.send() coroutine outlives
+        // the session (they'd otherwise no-op against a closed room and leak).
+        scope.cancel()
         signaling.close(room)
 
         runCatching { videoCapturer?.stopCapture() }
