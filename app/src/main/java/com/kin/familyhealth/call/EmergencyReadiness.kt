@@ -70,8 +70,22 @@ object EmergencyReadiness {
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Notifications. On Android 13+ this is a runtime permission that onboarding can
+     * skip; without it the incoming-call notification, health alerts, and the
+     * "call could not start" notice are all silently dropped by the OS.
+     */
+    fun notificationsEnabled(context: Context): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+    fun openNotificationSettings(context: Context) = open(
+        context,
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+    )
+
     fun allReady(context: Context): Boolean =
-        cameraMicGranted(context) && overlayGranted(context) &&
+        cameraMicGranted(context) && notificationsEnabled(context) && overlayGranted(context) &&
             fullScreenIntentAllowed(context) && batteryExempt(context)
 
     fun openOverlaySettings(context: Context) = open(
@@ -118,9 +132,13 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
     var fullScreen by remember { mutableStateOf(EmergencyReadiness.fullScreenIntentAllowed(context)) }
     var battery by remember { mutableStateOf(EmergencyReadiness.batteryExempt(context)) }
     var camMic by remember { mutableStateOf(EmergencyReadiness.cameraMicGranted(context)) }
+    var notifs by remember { mutableStateOf(EmergencyReadiness.notificationsEnabled(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { camMic = EmergencyReadiness.cameraMicGranted(context) }
+    ) {
+        camMic = EmergencyReadiness.cameraMicGranted(context)
+        notifs = EmergencyReadiness.notificationsEnabled(context)
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -129,13 +147,14 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                 fullScreen = EmergencyReadiness.fullScreenIntentAllowed(context)
                 battery = EmergencyReadiness.batteryExempt(context)
                 camMic = EmergencyReadiness.cameraMicGranted(context)
+                notifs = EmergencyReadiness.notificationsEnabled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    if (overlay && fullScreen && battery && camMic) return
+    if (overlay && fullScreen && battery && camMic && notifs) return
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -163,6 +182,19 @@ fun EmergencyReadinessBanner(modifier: Modifier = Modifier) {
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Grant camera & microphone") }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (!notifs) {
+                Button(
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= 33) {
+                            permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+                        } else {
+                            EmergencyReadiness.openNotificationSettings(context)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Allow notifications") }
                 Spacer(Modifier.height(6.dp))
             }
             if (!overlay) {

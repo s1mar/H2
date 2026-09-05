@@ -192,9 +192,20 @@ class WebRtcSession(
         localVideoTrack = f.createVideoTrack("kin_v0", source).apply { setEnabled(true) }
 
         // --- Mic / local audio track ---
-        val aSource = f.createAudioSource(MediaConstraints())
-        audioSource = aSource
-        localAudioTrack = f.createAudioTrack("kin_a0", aSource).apply { setEnabled(true) }
+        // Mirror the camera guard: without RECORD_AUDIO, WebRTC's AudioRecord throws a
+        // SecurityException on start. Skip the mic track (video-only call) instead of
+        // crashing the process mid-emergency.
+        val micGranted = ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (micGranted) {
+            runCatching {
+                val aSource = f.createAudioSource(MediaConstraints())
+                audioSource = aSource
+                localAudioTrack = f.createAudioTrack("kin_a0", aSource).apply { setEnabled(true) }
+            }.onFailure { Log.w(TAG, "Audio track setup failed; continuing without mic", it) }
+        } else {
+            Log.w(TAG, "RECORD_AUDIO not granted; call will be video-only")
+        }
 
         // --- PeerConnection ---
         // STUN handles direct peer-to-peer on friendly networks; TURN relays the
@@ -219,8 +230,9 @@ class WebRtcSession(
 
         peerConnection = f.createPeerConnection(rtcConfig, pcObserver)
         peerConnection?.let { pc ->
-            pc.addTrack(localVideoTrack, listOf("kin_stream"))
-            pc.addTrack(localAudioTrack, listOf("kin_stream"))
+            // Either track may be absent when its permission was skipped; never pass null.
+            localVideoTrack?.let { pc.addTrack(it, listOf("kin_stream")) }
+            localAudioTrack?.let { pc.addTrack(it, listOf("kin_stream")) }
         }
 
         localRenderer?.let { localVideoTrack?.addSink(it) }

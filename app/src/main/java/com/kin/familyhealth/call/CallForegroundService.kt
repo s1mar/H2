@@ -111,8 +111,20 @@ class CallForegroundService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        session.initialize()
-        if (isIncoming) session.startAsCallee() else session.startAsCaller()
+        // Media setup can throw (e.g. a platform SecurityException deep in the audio or
+        // camera stack if a permission was skipped). Never let that escape onStartCommand
+        // and crash the process mid-emergency: tear down and tell the user instead.
+        val started = runCatching {
+            session.initialize()
+            if (isIncoming) session.startAsCallee() else session.startAsCaller()
+        }.onFailure { Log.e(TAG, "Call media setup failed", it) }.isSuccess
+        if (!started) {
+            postPermissionMissingNotification()
+            CallSessionHolder.endCall()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         // Step 5: full-screen intent launches CallActivity directly (self-answer path).
         launchCallActivity(callerId, room, isIncoming)
