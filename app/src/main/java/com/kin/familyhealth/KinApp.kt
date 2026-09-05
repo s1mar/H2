@@ -27,6 +27,8 @@ class KinApp : Application() {
         createNotificationChannels()
         // Inject the signaling client so incoming/outgoing calls can start.
         runCatching { ServiceLocator.installCallSignaling(this) }
+        // Keep this phone reachable: re-register the FCM token every launch.
+        runCatching { ServiceLocator.refreshFcmTokenIfSignedIn(this) }
     }
 
     private fun initFirebaseSafely() {

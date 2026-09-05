@@ -43,7 +43,8 @@ object CallSessionHolder {
      */
     fun ensureSession(context: Context, room: String, peerUid: String, incoming: Boolean): WebRtcSession {
         val existing = session
-        if (existing != null && this.room == room) return existing
+        // Reuse only a LIVE session for the same room; a disposed one must be rebuilt.
+        if (existing != null && !existing.isDisposed && this.room == room) return existing
 
         existing?.dispose()
 

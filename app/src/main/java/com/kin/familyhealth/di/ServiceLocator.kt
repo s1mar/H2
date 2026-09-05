@@ -93,6 +93,23 @@ object ServiceLocator {
     }
 
     /**
+     * Re-register the current FCM token on every launch. onNewToken() drops a rotated
+     * token if it fires before sign-in; without this, that phone could silently become
+     * unreachable for emergency wake-pushes. Idempotent merge write; cheap.
+     */
+    fun refreshFcmTokenIfSignedIn(context: Context) {
+        val app = context.applicationContext
+        if (!firebaseReady(app)) return
+        val uid = myUid() ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching {
+                PairingService(FirebaseAuth.getInstance(), Firebase.firestore, settings(app))
+                    .registerFcmToken(uid)
+            }
+        }
+    }
+
+    /**
      * Dashboard "Reach in" action: resolve the paired partner + a deterministic
      * room id, then start the outgoing emergency call.
      */

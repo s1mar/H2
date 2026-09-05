@@ -99,6 +99,9 @@ class WebRtcSession(
     private var isFrontCamera = true
     private var disposed = false
 
+    /** True once [dispose] has run; a disposed session must never be reused for a call. */
+    val isDisposed: Boolean get() = disposed
+
     private val _connectionState = MutableStateFlow(CallConnectionState.CONNECTING)
     val connectionState: StateFlow<CallConnectionState> = _connectionState
 
