@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import com.kin.familyhealth.core.PairingBlockedByStalePartnerException
 import kotlinx.coroutines.launch
 
 /**
@@ -175,13 +176,25 @@ class OnboardingViewModel(
                 settingsRepository.setOnboardingComplete(true)
             }.onSuccess {
                 _uiState.value = _uiState.value.copy(isPairing = false, paired = true, onboardingComplete = true)
-            }.onFailure {
+            }.onFailure { e ->
                 _uiState.value = _uiState.value.copy(
                     isPairing = false,
-                    pairError = "Couldn't pair with that code. Double-check it and try again.",
+                    pairError = pairErrorMessage(e),
                 )
             }
         }
+    }
+
+    companion object {
+        /** Shared by onboarding and Settings so both explain the reinstall case correctly. */
+        fun pairErrorMessage(e: Throwable): String =
+            if (e is PairingBlockedByStalePartnerException) {
+                "Their phone still has your OLD code (this happens after a reinstall). " +
+                    "Ask them to open Settings > Pairing on THEIR phone and enter your NEW " +
+                    "code first, then tap Pair here again."
+            } else {
+                "Couldn't pair with that code. Double-check it and try again."
+            }
     }
 
     /** Context-based constructor-injection factory, per AGENT-ONBOARD scope rules. */

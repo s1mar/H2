@@ -199,8 +199,8 @@ fun EntryScreen(onBack: () -> Unit, pairing: Pairing? = null) {
                                 myUid = uid
                                 p.pairWith(code)
                                 settingsRepository.setOnboardingComplete(true)
-                            }.onFailure {
-                                pairError = "Couldn't pair with that code. Double-check it and try again."
+                            }.onFailure { e ->
+                                pairError = OnboardingViewModel.pairErrorMessage(e)
                             }
                             isPairing = false
                         }

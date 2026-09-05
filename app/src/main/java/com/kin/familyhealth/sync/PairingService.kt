@@ -4,7 +4,9 @@ import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.kin.familyhealth.core.PairingBlockedByStalePartnerException
 import com.google.firebase.messaging.FirebaseMessaging
 import com.kin.familyhealth.data.settings.SettingsRepository
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -86,9 +88,19 @@ class PairingService(
             firestore.collection("pairings").document(myUid)
                 .set(mapOf("partnerUid" to partnerUid), SetOptions.merge())
                 .await()
-            firestore.collection("pairings").document(partnerUid)
-                .set(mapOf("partnerUid" to myUid), SetOptions.merge())
-                .await()
+            try {
+                firestore.collection("pairings").document(partnerUid)
+                    .set(mapOf("partnerUid" to myUid), SetOptions.merge())
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                // The rules refuse to overwrite a partner record that points at a DIFFERENT
+                // uid -- typically OUR old identity from before a reinstall. Only the
+                // partner can repair that from their phone; surface a specific error.
+                if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                    throw PairingBlockedByStalePartnerException()
+                }
+                throw e
+            }
         }
         // Only persist locally once BOTH mutual writes are confirmed.
         settingsRepository.setPartnerUid(partnerUid)

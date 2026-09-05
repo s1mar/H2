@@ -124,6 +124,10 @@ or the OS may kill the app and the wake-push won't open the call. This is an OEM
 behavior, not an app bug, and it's the single most common reason a background
 emergency call fails to auto-open.
 
+Also: **never "Force stop" Kin** from Android's app settings. A force-stopped app
+cannot receive the wake-push at all until it is opened again by hand. This is a
+platform rule, not something the app can work around.
+
 ## Security & privacy
 
 - Anonymous Firebase Auth; only your **mutually-paired** partner can read your

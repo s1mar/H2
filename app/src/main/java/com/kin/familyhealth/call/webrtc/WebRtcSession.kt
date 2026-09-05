@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -40,7 +41,14 @@ private const val TAG = "WebRtcSession"
 /**
  * Connection lifecycle exposed to the UI layer (CallActivity).
  */
-enum class CallConnectionState { CONNECTING, CONNECTED, DISCONNECTED, FAILED }
+/**
+ * How long either side waits in CONNECTING before declaring NO_ANSWER. Without this a
+ * caller whose wake-push never arrived would see "Calling..." forever and never learn
+ * that help was NOT summoned.
+ */
+private const val CONNECT_TIMEOUT_MS = 30_000L
+
+enum class CallConnectionState { CONNECTING, CONNECTED, DISCONNECTED, FAILED, NO_ANSWER }
 
 /**
  * Thin wrapper around `org.webrtc` (io.github.webrtc-sdk:android:114.5735.10) that owns:
@@ -224,6 +232,7 @@ class WebRtcSession(
 
     /** Caller side: create and send an SDP offer. Call after [initialize]. */
     fun startAsCaller() {
+        startConnectWatchdog()
         val pc = peerConnection ?: return
         pc.createOffer(object : SdpObserverAdapter() {
             override fun onCreateSuccess(desc: SessionDescription?) {
@@ -241,7 +250,22 @@ class WebRtcSession(
 
     /** Callee side: nothing to send up-front — just wait for the OFFER via [listenForSignals]. */
     fun startAsCallee() {
-        // No-op: initialize() already started listenForSignals(); the OFFER drives onOffer().
+        // initialize() already started listenForSignals(); the OFFER drives onOffer().
+        startConnectWatchdog()
+    }
+
+    /**
+     * If we are still CONNECTING after [CONNECT_TIMEOUT_MS], flip to NO_ANSWER so the UI
+     * can tell the person plainly that the call did not go through and offer a fallback.
+     * A connected/failed/hung-up call leaves CONNECTING first, so this is a no-op then.
+     */
+    private fun startConnectWatchdog() {
+        scope.launch {
+            delay(CONNECT_TIMEOUT_MS)
+            if (!disposed && _connectionState.value == CallConnectionState.CONNECTING) {
+                _connectionState.value = CallConnectionState.NO_ANSWER
+            }
+        }
     }
 
     private fun listenForSignals() {
@@ -386,8 +410,14 @@ class WebRtcSession(
         peerConnection?.close()
         peerConnection?.dispose()
         factory?.dispose()
-        localRenderer?.release()
-        remoteRenderer?.release()
+        // Detach the renderer fields BEFORE releasing them so a late PeerConnection.Observer
+        // callback (native thread) can never addSink() onto an already-released renderer.
+        val lr = localRenderer
+        val rr = remoteRenderer
+        localRenderer = null
+        remoteRenderer = null
+        lr?.release()
+        rr?.release()
         eglBase.release()
     }
 
@@ -427,7 +457,9 @@ class WebRtcSession(
         override fun onAddStream(stream: MediaStream?) {
             // Legacy Plan B callback; kept for older/alt code paths. Unified Plan delivers
             // remote video via onAddTrack/onTrack below.
-            stream?.videoTracks?.firstOrNull()?.addSink(remoteRenderer)
+            if (disposed) return
+            val renderer = remoteRenderer ?: return
+            stream?.videoTracks?.firstOrNull()?.addSink(renderer)
         }
 
         override fun onRemoveStream(stream: MediaStream?) {}
@@ -437,6 +469,7 @@ class WebRtcSession(
         override fun onRenegotiationNeeded() {}
 
         override fun onAddTrack(receiver: RtpReceiver?, mediaStreams: Array<out MediaStream>?) {
+            if (disposed) return
             val track = receiver?.track()
             if (track is VideoTrack) {
                 remoteRenderer?.let { track.addSink(it) }

@@ -35,7 +35,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.kin.familyhealth.call.webrtc.CallConnectionState
 import com.kin.familyhealth.call.webrtc.WebRtcSession
 import android.content.Intent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
 import androidx.compose.runtime.key
+import androidx.compose.ui.platform.LocalContext
 import com.kin.familyhealth.core.CallLauncher
 import com.kin.familyhealth.ui.theme.KinTheme
 import org.webrtc.SurfaceViewRenderer
@@ -211,6 +214,50 @@ fun CallScreen(
                 )
             }
 
+            // Watchdog result: the call never connected. Say so plainly and give a one-tap
+            // way to reach them by an ordinary phone call instead of guessing.
+            if (connectionState == CallConnectionState.NO_ANSWER) {
+                val ctx = LocalContext.current
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(Modifier.padding(20.dp)) {
+                        Text(
+                            text = if (isIncoming) "Couldn't connect" else "No answer",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (isIncoming) {
+                                "The call could not be set up. Try calling them back."
+                            } else {
+                                "Their phone isn't answering. It may be off, out of signal, or the " +
+                                    "app was closed. Call them directly now, or contact emergency services."
+                            },
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                runCatching {
+                                    ctx.startActivity(
+                                        Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Call their phone instead") }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(onClick = onHangUp, modifier = Modifier.fillMaxWidth()) { Text("Hang up") }
+                    }
+                }
+            }
+
             // Bottom controls: mute, hang up, flip camera.
             Row(
                 modifier = Modifier
@@ -259,4 +306,5 @@ private fun statusLabel(isIncoming: Boolean, state: CallConnectionState): String
     CallConnectionState.CONNECTED -> "Connected"
     CallConnectionState.DISCONNECTED -> "Disconnected"
     CallConnectionState.FAILED -> "Connection failed"
+    CallConnectionState.NO_ANSWER -> if (isIncoming) "Couldn't connect" else "No answer"
 }
