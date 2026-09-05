@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import com.kin.familyhealth.core.PairingBackendNotReadyException
 import com.kin.familyhealth.core.PairingBlockedByStalePartnerException
+import com.kin.familyhealth.core.PairingUnknownCodeException
 import kotlinx.coroutines.launch
 
 /**
@@ -187,14 +189,21 @@ class OnboardingViewModel(
 
     companion object {
         /** Shared by onboarding and Settings so both explain the reinstall case correctly. */
-        fun pairErrorMessage(e: Throwable): String =
-            if (e is PairingBlockedByStalePartnerException) {
+        fun pairErrorMessage(e: Throwable): String = when (e) {
+            is PairingBackendNotReadyException ->
+                "Kin's backend isn't set up yet: the Firestore security rules haven't been " +
+                    "published for this project. Publish firestore.rules (README, Setup " +
+                    "step 3), then fully close and reopen Kin and try again."
+            is PairingUnknownCodeException ->
+                "That code doesn't match another Kin phone. Make sure it's THEIR code " +
+                    "(not yours), that they've opened Kin at least once, and that you " +
+                    "typed it exactly."
+            is PairingBlockedByStalePartnerException ->
                 "Their phone still has your OLD code (this happens after a reinstall). " +
                     "Ask them to open Settings > Pairing on THEIR phone and enter your NEW " +
                     "code first, then tap Pair here again."
-            } else {
-                "Couldn't pair with that code. Double-check it and try again."
-            }
+            else -> "Couldn't pair. Check your internet connection and try again."
+        }
     }
 
     /** Context-based constructor-injection factory, per AGENT-ONBOARD scope rules. */

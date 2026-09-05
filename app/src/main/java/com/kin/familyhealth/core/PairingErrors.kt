@@ -9,3 +9,20 @@ package com.kin.familyhealth.core
  */
 class PairingBlockedByStalePartnerException :
     Exception("Partner's pairing record still points at a previous code")
+
+/**
+ * Thrown when the backend refuses even our OWN pairing write or the presence lookup.
+ * A signed-in user may always write their own docs under the published rules, so
+ * PERMISSION_DENIED there can only mean the Firestore security rules were never
+ * published for this project (a production-mode database denies everything by default).
+ */
+class PairingBackendNotReadyException :
+    Exception("Firestore security rules are not published; all writes are denied")
+
+/**
+ * Thrown when the typed code does not correspond to any Kin phone (no presence record),
+ * or is the user's own code. Without this check a mistyped code would "pair" silently
+ * with nobody.
+ */
+class PairingUnknownCodeException :
+    Exception("Code does not match any known Kin phone")

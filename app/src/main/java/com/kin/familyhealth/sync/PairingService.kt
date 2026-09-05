@@ -4,9 +4,12 @@ import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.kin.familyhealth.core.PairingBackendNotReadyException
 import com.kin.familyhealth.core.PairingBlockedByStalePartnerException
+import com.kin.familyhealth.core.PairingUnknownCodeException
 import com.google.firebase.messaging.FirebaseMessaging
 import com.kin.familyhealth.data.settings.SettingsRepository
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -67,6 +70,12 @@ class PairingService(
             firestore.collection("users").document(uid)
                 .set(mapOf("fcmToken" to token), SetOptions.merge())
                 .await()
+            // Presence marker (no sensitive data): lets the pairing screen verify that a
+            // typed code belongs to a real Kin phone. Written every launch so it
+            // self-heals if the rules weren't published yet at first sign-in.
+            firestore.collection("presence").document(uid)
+                .set(mapOf("seenAt" to FieldValue.serverTimestamp()), SetOptions.merge())
+                .await()
         } catch (t: Throwable) {
             // Guard: no network / placeholder config must not crash onboarding.
             Log.w(TAG, "registerFcmToken() failed", t)
@@ -85,9 +94,35 @@ class PairingService(
         // as an error; otherwise the UI says "paired" while the partner can never read our
         // vitals. Bounded so an offline phone fails fast instead of hanging on "Pairing...".
         withTimeout(PAIR_TIMEOUT_MS) {
-            firestore.collection("pairings").document(myUid)
-                .set(mapOf("partnerUid" to partnerUid), SetOptions.merge())
-                .await()
+            // 1) Is this a real Kin phone's code (and not our own)? Every phone writes
+            //    presence/{uid} at sign-in and on each launch. A mistyped code must fail
+            //    loudly here rather than "pair" silently with nobody.
+            if (partnerUid == myUid) throw PairingUnknownCodeException()
+            val known = try {
+                firestore.collection("presence").document(partnerUid).get().await().exists()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                    throw PairingBackendNotReadyException()
+                }
+                throw e
+            }
+            if (!known) throw PairingUnknownCodeException()
+
+            // 2) Our own pointer. Under the published rules a signed-in user may always
+            //    write their own doc, so PERMISSION_DENIED here means the rules were never
+            //    published -- report that, not "wrong code".
+            try {
+                firestore.collection("pairings").document(myUid)
+                    .set(mapOf("partnerUid" to partnerUid), SetOptions.merge())
+                    .await()
+            } catch (e: FirebaseFirestoreException) {
+                if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                    throw PairingBackendNotReadyException()
+                }
+                throw e
+            }
+
+            // 3) The partner's pointer back to us.
             try {
                 firestore.collection("pairings").document(partnerUid)
                     .set(mapOf("partnerUid" to myUid), SetOptions.merge())

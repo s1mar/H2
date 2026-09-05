@@ -32,6 +32,14 @@ service cloud.firestore {
       allow read, write: if isSelf(uid);
     }
 
+    // presence/{uid}: a timestamp each phone writes at sign-in and on every launch.
+    // Readable by any signed-in user so the pairing screen can verify that a typed
+    // code belongs to a real Kin phone. Holds nothing sensitive.
+    match /presence/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid);
+    }
+
     // Pairing pointers. A user always controls their own doc. They may write the
     // PARTNER's pointer back to themselves ONLY if that partner is not yet paired
     // (doc absent) or already points at them (re-pair / refresh). This blocks a

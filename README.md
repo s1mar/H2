@@ -77,6 +77,10 @@ high-priority FCM message. Everything else runs on-device.
    (cd functions && npm install)
    firebase deploy --only firestore:rules,functions
    ```
+   **Do this before pairing.** A production-mode Firestore denies every write
+   until rules are published, so pairing shows "backend isn't set up yet" until
+   then. No computer handy? Paste `firestore.rules` into Firebase console →
+   Firestore Database → **Rules** → Publish; only the Cloud Function needs the CLI.
 4. **(Local builds only)** point the Android SDK path: create `local.properties`
    with `sdk.dir=/path/to/Android/sdk` (not committed). The cloud build needs
    nothing here.
