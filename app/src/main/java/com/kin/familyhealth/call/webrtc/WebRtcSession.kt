@@ -1,5 +1,7 @@
 package com.kin.familyhealth.call.webrtc
 
+import com.kin.familyhealth.BuildConfig
+
 import android.content.Context
 import android.util.Log
 import com.kin.familyhealth.core.SignalMessage
@@ -165,9 +167,22 @@ class WebRtcSession(
         localAudioTrack = f.createAudioTrack("kin_a0", aSource).apply { setEnabled(true) }
 
         // --- PeerConnection ---
-        val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
-        )
+        // STUN handles direct peer-to-peer on friendly networks; TURN relays the
+        // media when both peers are behind symmetric NAT (typical on mobile data),
+        // so an emergency call still connects on cellular. TURN creds come from
+        // BuildConfig (set via gradle.properties) — empty means STUN-only.
+        val iceServers = buildList {
+            add(PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer())
+            val turnUrl = BuildConfig.TURN_URL
+            if (turnUrl.isNotBlank()) {
+                add(
+                    PeerConnection.IceServer.builder(turnUrl)
+                        .setUsername(BuildConfig.TURN_USERNAME)
+                        .setPassword(BuildConfig.TURN_CREDENTIAL)
+                        .createIceServer()
+                )
+            }
+        }
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }

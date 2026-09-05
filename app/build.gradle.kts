@@ -15,6 +15,13 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // TURN server config for reliable calls on mobile data. Set these in
+        // gradle.properties (or ~/.gradle/gradle.properties, or -P flags) so
+        // credentials stay out of source control. Empty = STUN-only.
+        buildConfigField("String", "TURN_URL", "\"${project.findProperty("KIN_TURN_URL") ?: ""}\"")
+        buildConfigField("String", "TURN_USERNAME", "\"${project.findProperty("KIN_TURN_USERNAME") ?: ""}\"")
+        buildConfigField("String", "TURN_CREDENTIAL", "\"${project.findProperty("KIN_TURN_CREDENTIAL") ?: ""}\"")
     }
 
     buildTypes {
@@ -40,6 +47,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

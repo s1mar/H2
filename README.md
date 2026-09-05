@@ -102,6 +102,24 @@ Install on **both** phones. Then on each phone:
   Android's Accessibility settings so you can enable the Kin service. Only then
   will it auto-tap answer.
 
+## Emergency auto-answer — how the no-tap call works
+
+The receiving phone does **not** ring or wait for anyone to press answer. When
+you tap "Reach in", a high-priority push wakes the other phone, a foreground
+service starts, and the call screen opens and connects **itself** as the callee.
+This is the point: if the other person is having an episode and can't touch the
+phone, the call still comes up and connects. Both camera and mic are on; the
+green privacy indicator shows (Android requires it and can't be hidden).
+
+For the no-tap path to be dependable, both phones must have granted, during
+onboarding: display-over-other-apps, ignore-battery-optimization, and
+full-screen notifications. On **Samsung/Galaxy phones especially**, also turn
+off aggressive battery management for Kin (Settings → Battery → let Kin run in
+background / disable "put unused apps to sleep" / add to "never sleeping apps"),
+or the OS may kill the app and the wake-push won't open the call. This is an OEM
+behavior, not an app bug, and it's the single most common reason a background
+emergency call fails to auto-open.
+
 ## Security & privacy
 
 - Anonymous Firebase Auth; only your **mutually-paired** partner can read your
@@ -111,9 +129,19 @@ Install on **both** phones. Then on each phone:
 
 ## Production notes
 
-- **TURN server**: signaling uses Google's public STUN only. For reliable calls
-  across mobile networks/NATs, add a TURN server (e.g. coturn) to the WebRTC
-  ICE config in `call/webrtc/WebRtcSession.kt`.
+- **TURN server (needed for mobile data)**: STUN alone can't connect two phones
+  that are both on cellular (carrier-grade symmetric NAT). TURN relays the
+  audio+video through a server so the call connects on any network. The ICE
+  config already reads TURN credentials from `BuildConfig`; supply them in
+  `gradle.properties` (kept out of source):
+  ```properties
+  KIN_TURN_URL=turn:your-turn-host:3478
+  KIN_TURN_USERNAME=your-username
+  KIN_TURN_CREDENTIAL=your-secret
+  ```
+  Get credentials from a managed provider (Metered, Twilio, Cloudflare Calls —
+  most have a free tier) or self-host `coturn` on a small VPS. Leave them empty
+  to stay STUN-only (fine on Wi-Fi). Rebuild the APK after setting them.
 - **QR pairing**: the pairing screen shows a copyable code; a scannable QR could
   be added (no QR lib is bundled).
 - **Fall/SOS**: turn on your watches' built-in fall detection + emergency SOS
