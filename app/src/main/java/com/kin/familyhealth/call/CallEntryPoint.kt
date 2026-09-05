@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Nav-route entry point for `call/{callerId}` (see ARCHITECTURE.md "Shared contracts" and
@@ -22,13 +23,16 @@ import androidx.compose.ui.Modifier
 fun EntryScreen(callerId: String) {
     val session = CallSessionHolder.session
     val room = CallSessionHolder.room
+    val context = LocalContext.current
 
     if (session != null && room != null) {
         CallScreen(
             callerId = CallSessionHolder.callerId ?: callerId,
             isIncoming = CallSessionHolder.isIncoming,
             session = session,
-            onHangUp = { CallSessionHolder.endCall() }
+            // Same full teardown as CallActivity: stops the foreground service (and its
+            // notification + wake lock), not just the WebRTC session.
+            onHangUp = { CallForegroundService.stop(context) }
         )
     } else {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

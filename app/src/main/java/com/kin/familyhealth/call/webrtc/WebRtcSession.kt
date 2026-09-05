@@ -262,8 +262,10 @@ class WebRtcSession(
     private fun startConnectWatchdog() {
         scope.launch {
             delay(CONNECT_TIMEOUT_MS)
-            if (!disposed && _connectionState.value == CallConnectionState.CONNECTING) {
-                _connectionState.value = CallConnectionState.NO_ANSWER
+            // Atomic compare-and-set: onIceConnectionChange writes CONNECTED from a WebRTC
+            // thread, so a plain read-then-write could mislabel a just-connected call.
+            if (!disposed) {
+                _connectionState.compareAndSet(CallConnectionState.CONNECTING, CallConnectionState.NO_ANSWER)
             }
         }
     }
