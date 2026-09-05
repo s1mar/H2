@@ -8,7 +8,9 @@ import com.kin.familyhealth.vitals.model.Vitals
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 
 private const val TAG = "FirebaseVitalsSync"
 private const val COLLECTION_PARTNERS = "partners"
@@ -56,13 +58,16 @@ class FirebaseVitalsSync(
         }
     }
 
-    override fun partnerVitals(): Flow<Vitals?> = callbackFlow {
-        val partnerUid = try {
-            settingsRepository.partnerUid.first()
-        } catch (t: Throwable) {
-            Log.w(TAG, "partnerVitals() could not read partnerUid", t)
-            null
-        }
+    /**
+     * Re-subscribes whenever the paired partner changes, so pairing (or unpairing) from
+     * Settings while the dashboard is already open takes effect immediately instead of
+     * only after an app restart.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun partnerVitals(): Flow<Vitals?> =
+        settingsRepository.partnerUid.flatMapLatest { partnerUid -> listenTo(partnerUid) }
+
+    private fun listenTo(partnerUid: String?): Flow<Vitals?> = callbackFlow {
         if (partnerUid.isNullOrBlank()) {
             trySend(null)
             close()
